@@ -1,0 +1,71 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# VSCode settings
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Data (captured faces, datasets)
+data/
+dataset/
+*.sqlite
+*.db
+
+# Model weights / training outputs
+models/
+*.h5
+*.ckpt
+*.tflite
+*.pb
+*.pt
+*.pth
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# PyInstaller
+dist/
+build/
+*.spec
+
+# Coverage reports
+.coverage
+htmlcov/
+*.gcov
+
+# IDE / editor files
+*.sublime-project
+*.sublime-workspace
+.idea/
+
+# Temporary files
+*.tmp
+*.swp
+*.bak
+*.old
+
+# Mac / Linux hidden files
+*.DS_Store
+*.AppleDouble
+*.LSOverride
+
+# Windows hidden files
+ehthumbs.db
+Desktop.ini
+
+# Logs from tqdm or other libraries
+*.progress
