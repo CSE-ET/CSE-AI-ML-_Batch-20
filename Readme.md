@@ -19,7 +19,7 @@ See setup instructions above. For custom config, edit `config.yaml`.
 
 ## To run follow the below commands in the terminal
 
-- python src/main.py --mode capture → Enter "hasini" → Capture 12 images.
+- python src/main.py --mode capture → Enter <username> (for lable)  → Capture 100 images.
 - python src/main.py --mode train → Train on data.
 - python src/main.py --mode recognize → Test live recognition.
 
