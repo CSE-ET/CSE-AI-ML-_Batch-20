@@ -16,5 +16,14 @@ See setup instructions above. For custom config, edit `config.yaml`.
 - Stats: Use SciPy for t-tests (extend training.py).
 - Datasets: Compatible with LFW/CASIA (resize to grayscale).
 
-Contact: senior_cv_engineer@example.com
+
+## To run follow the below commands in the terminal
+
+- python src/main.py --mode capture → Enter "hasini" → Capture 12 images.
+- python src/main.py --mode train → Train on data.
+- python src/main.py --mode recognize → Test live recognition.
+
+This should resolve it—95%+ accuracy awaits!.
+
+Contact: muvvahasiniraghu313@gmail.com
 License: MIT
