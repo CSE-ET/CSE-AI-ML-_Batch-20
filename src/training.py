@@ -6,6 +6,7 @@ from utils.logger import setup_logger
 from utils.config_loader import ConfigLoader
 import os
 from .preprocessing import Preprocessor
+from sklearn.metrics import accuracy_score, precision_recall_fscore_support  # Add if not there; pip install scikit-learn (or use numpy for basics)
 
 
 logger = setup_logger()
@@ -88,6 +89,24 @@ class Trainer:
         self.model.save(str(self.model_path))
         print("LBPH Training completed!")
         print(f"Model saved at: {self.model_path}")
+    
+    def evaluate(self, test_faces, test_labels, recognizer, tau=80):
+        predictions = []
+        confidences = []
+        for face, true_label in zip(test_faces, test_labels):
+            pred_label, conf = recognizer.recognize_face(face, tau)
+            predictions.append(pred_label)  # String label for metrics
+            confidences.append(conf)
+        
+        # Map strings to IDs for numeric metrics
+        pred_ids = [list(recognizer.reverse_map.keys())[list(recognizer.reverse_map.values()).index(p)] if p != "Unknown" else -1 for p in predictions]
+        true_ids = test_labels  # Assume numeric IDs
+        
+        acc = accuracy_score(true_ids, pred_ids)
+        prec, rec, f1, _ = precision_recall_fscore_support(true_ids, pred_ids, average='weighted', zero_division=0)
+        
+        logger.info(f"Evaluation Results (tau={tau}): Accuracy={acc:.2%}, Precision={prec:.3f}, Recall={rec:.3f}, F1={f1:.3f}, Avg Conf={np.mean(confidences):.2f}")
+        return {'accuracy': acc, 'precision': prec, 'recall': rec, 'f1': f1, 'avg_conf': np.mean(confidences)}
 
     def incremental_update(self, new_face, new_label):
         self.model.update([new_face], np.array([new_label]))
