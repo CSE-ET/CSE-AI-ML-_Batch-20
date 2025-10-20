@@ -1,11 +1,11 @@
 import argparse
 import numpy as np
-from src.detection import FaceDetector
-from src.preprocessing import Preprocessor
-from src.training import Trainer
-from src.recognition import Recognizer
-from src.gui import GUI
-from src.capture import UniqueCapturer  # Added for capture mode
+from .detection import FaceDetector
+from .preprocessing import Preprocessor
+from .training import Trainer
+from .recognition import Recognizer
+from .gui import GUI
+from .capture import UniqueCapturer  # Added for capture mode
 from utils.logger import setup_logger
 from utils.config_loader import ConfigLoader
 
@@ -22,7 +22,7 @@ def main():
     if args.mode == 'train':
         trainer = Trainer()
         faces, labels = trainer.load_dataset()
-        trainer.train(faces, labels)
+        trainer.train()
         logger.info("Training completed.")
 
     elif args.mode == 'recognize':
@@ -32,12 +32,13 @@ def main():
         trainer.model.read(str(trainer.model_path))  # Load model
         
         # Load sample training faces for threshold computation (reuse from dataset)
-        sample_faces, _ = trainer.load_dataset()
-        tau = Recognizer(trainer).compute_adaptive_threshold(sample_faces)
+        sample_faces, _ = trainer.load_dataset()  # Preprocessed faces—good!
         
         detector = FaceDetector()
         preprocessor = Preprocessor()
-        recognizer = Recognizer(trainer)
+        recognizer = Recognizer(trainer)  # ✅ Instantiate HERE, before tau
+        tau = recognizer.compute_adaptive_threshold(sample_faces)  # Now safe to call
+        
         gui = GUI(recognizer, detector, preprocessor, tau)
         gui.run(config.get('recognition.webcam_id', 0))
 

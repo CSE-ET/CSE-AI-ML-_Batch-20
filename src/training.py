@@ -1,84 +1,95 @@
 import cv2
 import numpy as np
 import pickle
-import os
-from sklearn.model_selection import KFold
+from pathlib import Path
 from utils.logger import setup_logger
 from utils.config_loader import ConfigLoader
-from pathlib import Path
+import os
+from .preprocessing import Preprocessor
+
 
 logger = setup_logger()
 config = ConfigLoader()
 
 class Trainer:
+    
     def __init__(self, model_path="models/lbph_model.yaml"):
+        self.preprocessor = Preprocessor()
         self.model_path = Path(model_path)
-        self.model = cv2.face.LBPHFaceRecognizer_create()
-        self.lbph_radius = config.get('training.lbph_radius', 2)
-        self.lbph_neighbors = config.get('training.lbph_neighbors', 8)
-        self.lbph_grid_x = config.get('training.lbph_grid_x', 8)
-        self.lbph_grid_y = config.get('training.lbph_grid_y', 8)
-        self.model.setRadius(self.lbph_radius)
-        self.model.setNeighbors(self.lbph_neighbors)
-        self.model.setGridX(self.lbph_grid_x)
-        self.model.setGridY(self.lbph_grid_y)
-        self.subjects_db_path = "models/subjects_db.pkl"
+        self.model_path.parent.mkdir(parents=True, exist_ok=True)
+
+        self.model = cv2.face.LBPHFaceRecognizer_create(
+            radius=config.get('training.lbph_radius', 2),
+            neighbors=config.get('training.lbph_neighbors', 8),
+            grid_x=config.get('training.lbph_grid_x', 8),
+            grid_y=config.get('training.lbph_grid_y', 8)
+        )
+
+        self.subjects_db_path = "models/labels.pkl"
+        self.face_size = config.get('preprocessing.face_size', 200)
+        self.min_sharpness = config.get('preprocessing.min_sharpness_variance', 100)
+
 
     def load_dataset(self, data_dir="data/train"):
         faces = []
         labels = []
         label_map = {}
         current_id = 0
-        
+
         for subject_dir in sorted(Path(data_dir).iterdir()):
             if not subject_dir.is_dir():
                 continue
-            label = str(subject_dir.name)
-            if label not in label_map:
-                label_map[label] = current_id
-                current_id += 1
-            
+
+            label = subject_dir.name
+            label_map[label] = current_id
+
             for img_path in subject_dir.glob("*.jpg"):
-                img = cv2.imread(str(img_path))
+                img = cv2.imread(str(img_path), cv2.IMREAD_GRAYSCALE)
                 if img is None:
                     continue
-                gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-                faces.append(gray)
-                labels.append(label_map[label])
-        
-        logger.info(f"Loaded {len(faces)} images for {len(label_map)} subjects")
+
+                # Apply full preprocessing (mimics inference)
+                processed_img = self.preprocessor.preprocess_face(img)  # Now handles gray
+
+                # Sharpness check on processed image (more robust)
+                sharpness = cv2.Laplacian(processed_img, cv2.CV_64F).var()
+                if sharpness < self.min_sharpness:
+                    logger.warning(f"Low sharpness image skipped: {img_path} (variance {sharpness:.2f})")
+                    continue
+
+                faces.append(processed_img)
+                labels.append(current_id)
+
+            current_id += 1
+
         self.save_label_map(label_map)
-        return np.array(faces), np.array(labels)
+        logger.info(f"Loaded {len(faces)} processed images for {len(set(labels))} subjects.")
+        return faces, labels
+
 
     def save_label_map(self, label_map):
         with open(self.subjects_db_path, 'wb') as f:
             pickle.dump(label_map, f)
 
     def load_label_map(self):
+        if not os.path.exists(self.subjects_db_path):
+            return {}
         with open(self.subjects_db_path, 'rb') as f:
             return pickle.load(f)
 
-    def train(self, faces, labels):
-        # 5-fold cross-validation
-        kf = KFold(n_splits=config.get('training.cross_validation_folds', 5))
-        accuracies = []
-        for train_idx, val_idx in kf.split(faces):
-            train_faces, val_faces = faces[train_idx], faces[val_idx]
-            train_labels, val_labels = labels[train_idx], labels[val_idx]
-            
-            self.model.train(train_faces, train_labels)
-            _, conf = self.model.predict(val_faces[0])  # Sample prediction
-            accuracies.append(conf)  # Simplified; in practice, compute full accuracy
-        
-        avg_accuracy = np.mean(accuracies)
-        logger.info(f"Cross-validation accuracy: {avg_accuracy:.2%}")
-        
-        # Save model
-        self.model.save(str(self.model_path))
-        logger.info(f"Model saved to {self.model_path}")
+    def train(self):
+        faces, labels = self.load_dataset()
+        if not faces:
+            print("No valid images found for training!")
+            return
 
-    def incremental_update(self, new_face, new_label_id, learning_rate=0.01):
-        # Simplified incremental learning: Retrain with new sample (paper's ΔW approx)
-        # In production, use full retrain for accuracy; this is O(1) approximation
-        self.model.update(new_face.reshape(1, -1), np.array([new_label_id]))
-        logger.info("Model updated incrementally")
+        print(f"Starting training on {len(faces)} images for {len(set(labels))} subjects...")
+        self.model.train(faces, np.array(labels))
+        self.model.save(str(self.model_path))
+        print("LBPH Training completed!")
+        print(f"Model saved at: {self.model_path}")
+
+    def incremental_update(self, new_face, new_label):
+        self.model.update([new_face], np.array([new_label]))
+        self.model.save(str(self.model_path))
+        print(f"Model updated with new label {new_label}")

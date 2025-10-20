@@ -18,6 +18,7 @@ class GUI:
         cap = cv2.VideoCapture(webcam_id)
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        cap.set(cv2.CAP_PROP_FPS, 20)
         
         fps_start = time.time()
         frame_count = 0
@@ -34,6 +35,7 @@ class GUI:
                 face_roi = frame[y:y+h, x:x+w]
                 preprocessed = self.preprocessor.preprocess_face(face_roi)
                 
+                # ✅ FIX: Pass self.tau as second arg
                 identity, conf = self.recognizer.recognize_face(preprocessed, self.tau)
                 
                 # Draw bounding box and label

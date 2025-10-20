@@ -1,33 +1,28 @@
-# System Configuration
-detection:
-  haar_cascade_path: "haarcascade_frontalface_default.xml"
-
-preprocessing:
-  clahe_clip_limit: 2.0
-  clahe_tile_grid_size: [8, 8]
-  bilateral_sigma_d: 5
-  bilateral_sigma_r: 0.1
-  min_sharpness_variance: 30
-
-training:
-  lbph_radius: 2
-  lbph_neighbors: 8
-  lbph_grid_x: 8
-  lbph_grid_y: 8
-  cross_validation_folds: 5
-  learning_rate: 0.01
-
-recognition:
-  confidence_threshold_k: 1.5
-  temporal_smoothing_alpha: 0.7
-  min_fps: 20
-  webcam_id: 0
+# config.yaml: Configuration for Facial Recognition System
+# All paths relative to project root
 
 paths:
-  data_dir: "data"
   models_dir: "models"
-  logs_dir: "logs"
 
-logging:
-  level: "INFO"
-  file: "logs/app.log"
+detection:
+  haar_cascade_path: "haarcascade_frontalface_default.xml"  # ✅ Nested under 'detection' to match code
+
+preprocessing:
+  face_size: 200  # Resize target for all faces (consistent across train/infer)
+  min_sharpness_variance: 60  # Lowered: Allows more samples, reduces rejections
+  clahe_clip_limit: 2.0  # Contrast enhancement strength
+  clahe_tile_grid_size: [8, 8]  # CLAHE grid
+  bilateral_sigma_d: 5  # Bilateral filter spatial sigma
+  bilateral_sigma_r: 0.1  # Bilateral filter range sigma
+  unsharp_sigma: 2.0  # Gaussian blur radius (lower = finer details)
+  sharpening_strength: 2.0  # Unsharp alpha (higher = sharper; cap at 2.5 to avoid noise)
+
+training:
+  lbph_radius: 1  # Finer local patterns
+  lbph_neighbors: 4  # More discriminative
+  lbph_grid_x: 8  # Histogram grid (x)
+  lbph_grid_y: 8  # Histogram grid (y)
+
+recognition:
+  default_threshold: 120  # LBPH fallback tau
+  webcam_id: 0  # Integrated Dell camera ID
