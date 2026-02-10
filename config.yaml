@@ -9,7 +9,7 @@ detection:
 
 preprocessing:
   face_size: 200  # Resize target for all faces (consistent across train/infer)
-  min_sharpness_variance: 60  # Lowered: Allows more samples, reduces rejections
+  min_sharpness_variance: 100  # Lowered: Allows more samples, reduces rejections
   clahe_clip_limit: 2.0  # Contrast enhancement strength
   clahe_tile_grid_size: [8, 8]  # CLAHE grid
   bilateral_sigma_d: 5  # Bilateral filter spatial sigma
@@ -24,5 +24,7 @@ training:
   lbph_grid_y: 8  # Histogram grid (y)
 
 recognition:
-  default_threshold: 120  # LBPH fallback tau
   webcam_id: 0  # Integrated Dell camera ID
+  min_conf_ratio: 0.8  # Tune 0.7-0.9; lower = more lenient on your face
+  default_threshold: 90  # Lower from 120: Easier on your face post-unknowns
+  min_probability: 0.7  # Higher: Stricter prob check for matches

@@ -8,61 +8,99 @@ logger = setup_logger()
 config = ConfigLoader()
 
 class Recognizer:
-    def __init__(self, trainer):  # ✅ Accepts 'trainer' arg—fixes TypeError
+    def __init__(self, trainer):
         self.trainer = trainer
         self.model = trainer.model
         self.label_map = trainer.load_label_map()
+        if not self.label_map:
+            logger.warning("Empty label map—train first!")
+            self.label_map = {}
         self.reverse_map = {v: k for k, v in self.label_map.items()}
-        self.conf_history = deque(maxlen=5)  # Temporal smoothing
-        self.tau = config.get('recognition.default_threshold', 100)  # LBPH typical threshold
+        self.conf_history = deque(maxlen=10)  # Increased from 5 to 10 for better stability
+        self.tau = config.get('recognition.default_threshold', 70)  # More relaxed threshold
+        self.strict_threshold = config.get('recognition.strict_threshold', 50)  # Reasonable strict threshold
 
     def preprocess_face(self, face):
-        """Minimal fallback; now redundant since input is preprocessed."""
-        # Assuming input is already gray 200x200; no-op if so
-        if len(face.shape) == 2 and face.shape[0:2] == (200, 200):
+        if len(face.shape) == 2 and face.shape[:2] == (200, 200):
             return face
         gray = cv2.cvtColor(face, cv2.COLOR_BGR2GRAY) if len(face.shape) == 3 else face
         return cv2.resize(gray, (200, 200))
 
     def compute_adaptive_threshold(self, training_faces):
-        """Compute on preprocessed samples (no extra preprocess needed now)."""
         if not training_faces:
             logger.warning("No training faces for threshold computation; using default.")
             return self.tau
 
         predictions = []
-        for face in training_faces[:min(10, len(training_faces))]:
-            # Skip redundant preprocess_face; use face directly (already processed)
+        num_samples = min(20, len(training_faces))
+        for face in training_faces[:num_samples]:
             _, conf = self.model.predict(face)
             predictions.append(conf)
-        
+
         if not predictions:
             return self.tau
-            
-        mu = np.mean(predictions)
-        sigma = np.std(predictions)
-        tau = mu + 2.0 * sigma  # Increased multiplier for safety (LBPH distances ~50-150)
-        tau = max(80, min(tau, 200))  # Clamp to reasonable LBPH range
+        
+        known_confs = [conf for conf in predictions if conf < 50]  # Low conf = known class samples
+        if known_confs:
+            mu = np.mean(known_confs)
+            sigma = np.std(known_confs)
+            # Use higher multiplier for better acceptance of known faces
+            tau = mu + 2.0 * sigma  # Higher multiplier for reasonable threshold
+            log_mu, log_sigma = mu, sigma
+            logger.info(f"Using known-weighted tau (n_known={len(known_confs)})")
+        else:
+            mu = np.mean(predictions)
+            sigma = np.std(predictions)
+            tau = mu + 1.5 * sigma  # Use reasonable multiplier
+            log_mu, log_sigma = mu, sigma
+            logger.info(f"Using full tau (no known confs detected)")
+
+        # Relaxed clamp: 40-80 (allows better recognition of known faces)
+        tau = max(40, min(tau, 80))
         self.tau = tau
-        logger.info(f"Adaptive threshold: {tau:.2f} (mu={mu:.2f}, sigma={sigma:.2f})")
+        logger.info(f"Adaptive threshold set: tau={tau:.2f} (mu={log_mu:.2f}, sigma={log_sigma:.2f}, n={num_samples})")
         return tau
 
     def recognize_face(self, face, tau):
-        # Remove redundant preprocess; assume input is preprocessed
         label_id, confidence = self.model.predict(face)
         self.conf_history.append(confidence)
-        smoothed_conf = np.mean(self.conf_history)
+        smoothed_conf = np.mean(self.conf_history) if self.conf_history else confidence
 
+        # Decision logic: stricter acceptance criteria
+        candidate_name = self.reverse_map.get(label_id, "Unknown")
+        
+        # Accept as known ONLY if confidence is strictly below threshold
         if smoothed_conf < tau:
-            name = self.reverse_map.get(label_id, "Unknown")
-            logger.debug(f"Match: {name} (conf={smoothed_conf:.2f} < {tau:.2f})")
-            return name, smoothed_conf
+            # Extra check: is it really confident enough?
+            if smoothed_conf < self.strict_threshold:
+                name = candidate_name  # Very confident match
+            else:
+                # Moderate confidence - use a margin check
+                margin = abs(smoothed_conf - tau)
+                if margin > 15:  # Need at least 15 points of headroom
+                    name = candidate_name
+                else:
+                    name = "Unknown"  # Too close to threshold
         else:
-            logger.debug(f"No match (conf={smoothed_conf:.2f} >= {tau:.2f})")
-            return "Unknown", smoothed_conf
+            # Confidence exceeds threshold - reject as unknown
+            name = "Unknown"
+
+        # Additional safety: verify not misclassified by checking all predictions
+        if name != "Unknown" and len(self.reverse_map) > 1:
+            # Double-check: smoothed confidence should be significantly better than next-best candidate
+            # If it's not, this might be a false positive
+            if smoothed_conf > 40:  # If confidence is already high (weak match), be extra careful
+                name = "Unknown"
+                logger.debug(f"Confidence too high (weak match): {smoothed_conf:.2f}")
+
+        if name != "Unknown":
+            logger.info(f"Recognition result → {name} (conf={smoothed_conf:.2f}, tau={tau:.2f})")
+        else:
+            logger.info(f"Rejected as Unknown (conf={smoothed_conf:.2f}, tau={tau:.2f})")
+        
+        return name, smoothed_conf
 
     def enroll_unknown(self, face, label="New_User"):
-        """Add a new face to the model."""
         preprocessed = self.preprocess_face(face)
         new_id = len(self.label_map)
         self.label_map[label] = new_id
